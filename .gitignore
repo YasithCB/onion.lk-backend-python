@@ -1,2 +1,4 @@
 # Virtual environment
 venv/
+__pycache__/
+api/__pycache__/

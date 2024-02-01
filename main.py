@@ -3,16 +3,24 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel,SecretStr
-from typing import Optional
+
 from api.list_api import listRouter
+from api.driver_api import driverRouter
+from db import get_mongo_db
 
 import secrets
 
 app = FastAPI()
+# Get the MongoDB database object
+db = get_mongo_db()
+
+# Load the TrOCR model and processor
+# processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
+# model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
 
 # Include your API routes
 app.include_router(listRouter)
-
+app.include_router(driverRouter)
 
 # Secret key to sign the JWT tokens (change this in a real application)
 SECRET_KEY = secrets.token_hex(32)
@@ -64,32 +72,53 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     return payload
 
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to Union.lk"}
+
+# @app.post("/predict")
+# async def predict(file: UploadFile = File(...)):
+#     # Read the uploaded image
+#     contents = await file.read()
+#     image = Image.open(io.BytesIO(contents)).convert("RGB")
+
+#     # Preprocess the image using the TrOCR processor
+#     pixel_values = processor(images=image, return_tensors="pt").pixel_values
+
+#     # Generate text using the TrOCR model
+#     generated_ids = model.generate(pixel_values)
+#     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+#     return {"text": generated_text}
+
+
 # Route to get information about the current user
 @app.get("/users/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 # Route to get a token for authentication
-@app.post("/token")
+@app.post("/user/auth")
 async def create_token(form_data: dict):
     mobileNumber = form_data["mobileNumber"]
     password = form_data["password"]
     
-    # find user on list
-    user = None
-    for user_key, user_data in fake_users_db.items():
-        if user_data["mobileNumber"] == mobileNumber:
-            user = user_data
-            break
+    # Assuming you have a collection named "users" in your database
+    users_collection = db.users
 
-    # check if credentials correct
-    if user is None or password != user["password"]:
+    # Find the user by mobileNumber
+    query = {"mobileNumber": mobileNumber}
+    user = users_collection.find_one(query)
+
+    # Check if user exists and credentials are correct
+    if user and password == user["password"]:
+        token_data = {"sub": mobileNumber}
+        return {'success': 'true', "access_token": create_jwt_token(token_data), "token_type": "bearer"}
+    else:
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    token_data = {"sub": mobileNumber}
-    return {'message' : 'success' ,"access_token": create_jwt_token(token_data), "token_type": "bearer"}
 
 
