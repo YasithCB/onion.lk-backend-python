@@ -3,6 +3,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel,SecretStr
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.list_api import listRouter
 from api.driver_api import driverRouter
@@ -13,6 +14,22 @@ import secrets
 app = FastAPI()
 # Get the MongoDB database object
 db = get_mongo_db()
+
+origins = [
+    "http://localhost:4000",  # Replace with your frontend port
+    "http://192.168.100.2:4000",  # Allow the FastAPI server to make requests to itself
+    "http://localhost:4000",  # Allow the FastAPI server to make requests to itself
+]
+
+
+# Allow all origins, methods, and headers for simplicity (modify as needed)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load the TrOCR model and processor
 # processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
@@ -113,7 +130,11 @@ async def create_token(form_data: dict):
     # Check if user exists and credentials are correct
     if user and password == user["password"]:
         token_data = {"sub": mobileNumber}
-        return {'success': 'true', "access_token": create_jwt_token(token_data), "token_type": "bearer"}
+        return {'success': 'true',
+                'message' : "User authenticated!",
+                "access_token": create_jwt_token(token_data),
+                "token_type": "bearer",
+                }
     else:
         raise HTTPException(
             status_code=401,

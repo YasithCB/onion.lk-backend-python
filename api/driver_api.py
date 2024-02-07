@@ -1,3 +1,4 @@
+from bson import ObjectId
 from fastapi import HTTPException, Form, APIRouter
 from jose import JWTError, jwt
 from decimal import Decimal
@@ -117,34 +118,64 @@ async def get_nearby_orders(
             order["_id"] = str(order["_id"])
             nearby_orders.append(order)
 
-    return {"nearby_orders": nearby_orders}
-
+    return {
+        "success": True,
+        "message": 'Successfully fetched nearby orders!',
+        "body": nearby_orders
+    }
 
 
 @driverRouter.post("/driver/accept_order")
 async def accept_order(
     mobileNumber : str = Form(...),
     orderId : str = Form(...),
-    
 ):
-    # Assuming you have a collection named "drivers" in your database
     orders_collection = db.order
 
     # Find the order by id
-    query = {"_id": orderId}
+    query = {"_id": ObjectId(orderId)}
     existing_order = orders_collection.find_one(query)
 
     if existing_order:
-        # Update the location of the driver
+        # Update the order status
         updated_data = {"assignedDriverMobileNumber": mobileNumber, "orderStatus": 'Ongoing'}
-        orders_collection.update_one(query, {"$set": updated_data})
+        orders_collection.update_one({"_id": existing_order["_id"]}, {"$set": updated_data})
 
         return {
-            "success": "true",
-            "message": "Order accepted Succeful!",
+            "success": True,
+            "message": "Order accepted!",
         }
     else:
         return {
-            "success": "false",
+            "success": False,
+            "message": f"Order with id {orderId} not found!",
+        }
+
+
+@driverRouter.post("/driver/complete_order")
+async def complete_order(
+    orderId : str = Form(...),    
+):
+    orders_collection = db.order
+
+    # Find the order by id
+    query = {"_id": ObjectId(orderId)}
+    existing_order = orders_collection.find_one(query)
+
+    if existing_order:
+        # Update the order status
+        orders_collection.update_one(
+            {"_id": existing_order["_id"]},
+            {"$set": {"orderStatus": 'Completed'}}
+        )
+
+
+        return {
+            "success": True,
+            "message": "Order completed!",
+        }
+    else:
+        return {
+            "success": False,
             "message": f"Order with id {orderId} not found!",
         }
