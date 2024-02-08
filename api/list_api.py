@@ -1,14 +1,21 @@
-from fastapi import APIRouter, File, UploadFile, Form
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 from decimal import Decimal
 from gridfs import GridFS
 from typing import Optional
-from bson import ObjectId
-import io
 import boto3
 from botocore.exceptions import NoCredentialsError
+from dotenv import load_dotenv
+import os
+
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from PIL import Image
+import requests
+import warnings
 
 from db import get_mongo_db
+
+# Load environment variables from .env file
+load_dotenv()
 
 listRouter = APIRouter()
 db = get_mongo_db()
@@ -16,7 +23,7 @@ fs = GridFS(db)
 
 def upload_to_aws(file, bucket, s3_file, acl="public-read"):
     print(f"Uploading {s3_file} to {bucket}")
-
+    
     s3 = boto3.client('s3', aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
                       aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
                       region_name=os.environ.get("REGION_NAME"))
@@ -33,6 +40,21 @@ def upload_to_aws(file, bucket, s3_file, acl="public-read"):
         print("Credentials not available")
         return False
 
+async def image_to_text(imageUrl):
+    print('running model')
+    # Suppress the specific warning
+    warnings.filterwarnings("ignore", message="Some weights of VisionEncoderDecoderModel were not initialized")
+
+    image = Image.open(requests.get(imageUrl, stream=True).raw).convert("RGB")
+
+    processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
+    model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
+    pixel_values = processor(images=image, return_tensors="pt").pixel_values
+
+    generated_ids = model.generate(pixel_values)
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+    return generated_text
 
 @listRouter.post("/listUpload")
 async def create_order(
@@ -44,30 +66,34 @@ async def create_order(
     locationLat: Decimal = Form(...),
     locationLng: Decimal = Form(...),
 ):
-    
-    
-    # # Read the image file content if provided
-    # if listImage is not None:
-    #     image_content = await listImage.read()
-    #     # Save the image file to GridFS
-    #     image_id = fs.put(image_content, filename=listImage.filename)
-    #     # Add the image_id to the order_data
-    #     order_data["listImage"] = str(image_id)
-    
-    # image upload to S3
-    
+    # Check if listImage is provided
+    if listImage is not None:
+        # Upload the image to AWS S3
+        bucket_name = 'onionlk'
+        region_name = '.s3.ap-south-1.amazonaws.com'
+        s3_file_path = f"uploads/{listImage.filename}"
+        
+        if not upload_to_aws(listImage.file, bucket_name, s3_file_path):
+            # Handle the case when the upload fails
+            raise HTTPException(status_code=500, detail="Failed to upload image to S3")
+
+        list_image_url = f"https://{bucket_name}{region_name}/{s3_file_path}"
+        generated_text = await image_to_text(list_image_url)
+        print(generated_text)
+    else:
+        list_image_url = None
 
     # Insert data into the "order" collection
     order_data = {
+        "listImageUrl": list_image_url,
         "description": description,
         "userMobileNumber": userMobileNumber,
         "storeName": storeName,
         "maxBudget": float(maxBudget) if maxBudget is not None else None,
         "locationLat": float(locationLat),
         "locationLng": float(locationLng),
-        "assignedDriverMobileNumber" : 'N/A',
-        "orderStatus" : 'Pending',
-        "listImageUrl" : '',
+        "assignedDriverMobileNumber": 'N/A',
+        "orderStatus": 'Pending',
     }
 
     # Assuming you have a collection named "order" in your database
@@ -81,10 +107,12 @@ async def create_order(
     return {
         "success": "true",
         "message": "The list upload was successful!",
+        "text_from_model": generated_text,
         "inserted_id": str(inserted_id),
     }
+
     
-    
+ 
 @listRouter.get("/user/my_orders")
 async def get_orders_by_user(
     mobileNumber: str,
@@ -107,18 +135,4 @@ async def get_orders_by_user(
         "message": f'Orders of {mobileNumber} are successfully fetched!',
         "body": orders_list,
     }
-   
-    
-@listRouter.get("/order/get_img")
-async def get_order_image(image_id: str,):
-    print('method running :::::::')
-
-    # Convert the image_id to ObjectId
-    image_id = ObjectId(image_id)
-
-    # Retrieve the image content from GridFS
-    image_content = fs.get(image_id).read()
-
-    # Create a StreamingResponse to send the image as a response
-    return StreamingResponse(io.BytesIO(image_content), media_type="image/jpeg")
 

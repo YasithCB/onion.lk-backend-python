@@ -127,8 +127,8 @@ async def get_nearby_orders(
 
 @driverRouter.post("/driver/accept_order")
 async def accept_order(
-    mobileNumber : str = Form(...),
-    orderId : str = Form(...),
+    mobileNumber : str,
+    orderId : str,
 ):
     orders_collection = db.order
 
@@ -154,7 +154,7 @@ async def accept_order(
 
 @driverRouter.post("/driver/complete_order")
 async def complete_order(
-    orderId : str = Form(...),    
+    orderId : str,    
 ):
     orders_collection = db.order
 
