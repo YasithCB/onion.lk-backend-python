@@ -1,14 +1,15 @@
 from bson import ObjectId
 from fastapi import HTTPException, Form, APIRouter
-from jose import JWTError, jwt
+from jose import jwt
 from decimal import Decimal
 from datetime import datetime, timedelta
 from math import radians, sin, cos, sqrt, atan2
-
-from db import get_mongo_db
+import sqlite3
 
 driverRouter = APIRouter()
-db = get_mongo_db()
+# Connect to SQLite database
+conn = sqlite3.connect('onionlk.db')
+cursor = conn.cursor()
 
 # Function to create JWT token
 def create_jwt_token(data: dict):
@@ -24,15 +25,12 @@ async def driver_auth(
     password: str = Form(...),
 ):
 
-    # Assuming you have a collection named "drivers" in your database
-    drivers_collection = db.drivers
-
-    # Find the driver by mobileNumber
-    query = {"mobileNumber": mobileNumber}
-    driver = drivers_collection.find_one(query)
+    # Execute SQL query to find the driver by mobileNumber
+    cursor.execute("SELECT * FROM drivers WHERE mobileNumber=?", (mobileNumber.lstrip("0"),))
+    driver = cursor.fetchone()
 
     # Check if driver exists and credentials are correct
-    if driver and password == driver["password"]:
+    if driver and password == driver[2]:  # Assuming password is in the third column (index 2)
         token_data = {"sub": mobileNumber}
         return {'success': 'true', "access_token": create_jwt_token(token_data), "token_type": "bearer"}
     else:
@@ -45,21 +43,23 @@ async def driver_auth(
     
 @driverRouter.post("/driver/update_location")
 async def update_driver_location(
-    mobileNumber : str = Form(...),
-    locationLat : Decimal = Form(...),
-    locationLng : Decimal = Form(...)
+    mobileNumber: str = Form(...),
+    locationLat: Decimal = Form(...),
+    locationLng: Decimal = Form(...)
 ):
-    # Assuming you have a collection named "drivers" in your database
-    drivers_collection = db.drivers
-
-    # Find the driver by mobileNumber
-    query = {"mobileNumber": mobileNumber}
-    existing_driver = drivers_collection.find_one(query)
+    # remove first char if it is 0
+    if len(mobileNumber) == 10:
+        mobileNumber = mobileNumber[1:]
+    
+    # Execute SQL query to find the driver by mobileNumber
+    cursor.execute("SELECT * FROM drivers WHERE mobileNumber=?", (mobileNumber,))
+    existing_driver = cursor.fetchone()
 
     if existing_driver:
         # Update the location of the driver
         new_location = {"locationLat": float(locationLat), "locationLng": float(locationLng)}
-        drivers_collection.update_one(query, {"$set": new_location})
+        cursor.execute("UPDATE drivers SET locationLat=?, locationLng=? WHERE mobileNumber=?", (new_location["locationLat"], new_location["locationLng"], mobileNumber))
+        conn.commit()
 
         return {
             "success": "true",
@@ -89,12 +89,19 @@ async def get_nearby_orders(
     mobileNumber: str,
     radius: float = 15  # Default radius in kilometers
 ):
+    # remove first char if it is 0
+    if len(mobileNumber) == 10:
+        mobileNumber = mobileNumber[1:]
     
+    # Connect to SQLite database
+    conn = sqlite3.connect('onionlk.db')
+    cursor = conn.cursor()
+
     # Find the driver by mobileNumber
-    drivers_collection = db.drivers
-    query = {"mobileNumber": mobileNumber}
-    driver = drivers_collection.find_one(query)
-    
+    query = "SELECT * FROM drivers WHERE mobileNumber = ?"
+    cursor.execute(query, (mobileNumber,))
+    driver = cursor.fetchone()
+
     if not driver:
         raise HTTPException(
             status_code=404,
@@ -102,21 +109,31 @@ async def get_nearby_orders(
         )
 
     # Get the driver's current location
-    driver_location = {"lat": driver["locationLat"], "lng": driver["locationLng"]}
+    driver_location = {"lat": driver[3], "lng": driver[4]}  # Assuming indexes based on your table structure
 
     # Find nearby orders within the specified radius
-    orders_collection = db.order
+    query = "SELECT * FROM orders"
+    cursor.execute(query)
     nearby_orders = []
 
-    for order in orders_collection.find():
-        order_location = {"lat": order["locationLat"], "lng": order["locationLng"]}
+    for order in cursor.fetchall():
+        order_location = {"lat": order[5], "lng": order[6]}  # Assuming indexes based on your table structure
         distance = calculate_distance(
             driver_location["lat"], driver_location["lng"], order_location["lat"], order_location["lng"]
         )
         if distance <= radius:
-            # Convert ObjectId to string
-            order["_id"] = str(order["_id"])
-            nearby_orders.append(order)
+            # Convert the order data to a dictionary
+            order_dict = {
+                "_id": str(order[0]),  # Assuming the first column is the ID
+                "imageUrl": order[1],  # Replace with the correct column index
+                "description": order[2],  # Replace with the correct column index
+                # Add other fields accordingly
+            }
+            nearby_orders.append(order_dict)
+
+    # Close the database connection
+    cursor.close()
+    conn.close()
 
     return {
         "success": True,
@@ -127,25 +144,42 @@ async def get_nearby_orders(
 
 @driverRouter.post("/driver/accept_order")
 async def accept_order(
-    mobileNumber : str,
-    orderId : str,
+    mobileNumber: str,
+    orderId: str,
 ):
-    orders_collection = db.order
+    # remove first char if it is 0
+    if len(mobileNumber) == 10:
+        mobileNumber = mobileNumber[1:]
+    
+    # Connect to SQLite database
+    conn = sqlite3.connect('onionlk.db')
+    cursor = conn.cursor()
 
     # Find the order by id
-    query = {"_id": ObjectId(orderId)}
-    existing_order = orders_collection.find_one(query)
+    query = "SELECT * FROM orders WHERE orderId = ?"
+    cursor.execute(query, (orderId,))
+    existing_order = cursor.fetchone()
 
     if existing_order:
         # Update the order status
         updated_data = {"assignedDriverMobileNumber": mobileNumber, "orderStatus": 'Ongoing'}
-        orders_collection.update_one({"_id": existing_order["_id"]}, {"$set": updated_data})
+        update_query = "UPDATE orders SET assignedDriverMobileNumber = ?, orderStatus = ? WHERE orderId = ?"
+        cursor.execute(update_query, (mobileNumber, 'Ongoing', orderId))
+        conn.commit()
+
+        # Close the database connection
+        cursor.close()
+        conn.close()
 
         return {
             "success": True,
             "message": "Order accepted!",
         }
     else:
+        # Close the database connection
+        cursor.close()
+        conn.close()
+
         return {
             "success": False,
             "message": f"Order with id {orderId} not found!",
@@ -154,28 +188,38 @@ async def accept_order(
 
 @driverRouter.post("/driver/complete_order")
 async def complete_order(
-    orderId : str,    
+    orderId: str,
 ):
-    orders_collection = db.order
+    # Connect to SQLite database
+    conn = sqlite3.connect('onionlk.db')
+    cursor = conn.cursor()
 
     # Find the order by id
-    query = {"_id": ObjectId(orderId)}
-    existing_order = orders_collection.find_one(query)
+    query = "SELECT * FROM orders WHERE orderId = ?"
+    cursor.execute(query, (orderId,))
+    existing_order = cursor.fetchone()
 
     if existing_order:
         # Update the order status
-        orders_collection.update_one(
-            {"_id": existing_order["_id"]},
-            {"$set": {"orderStatus": 'Completed'}}
-        )
+        update_query = "UPDATE orders SET orderStatus = ? WHERE orderId = ?"
+        cursor.execute(update_query, ('Completed', orderId))
+        conn.commit()
 
+        # Close the database connection
+        cursor.close()
+        conn.close()
 
         return {
             "success": True,
             "message": "Order completed!",
         }
     else:
+        # Close the database connection
+        cursor.close()
+        conn.close()
+
         return {
             "success": False,
             "message": f"Order with id {orderId} not found!",
         }
+

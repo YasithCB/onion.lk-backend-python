@@ -6,13 +6,13 @@ from pydantic import BaseModel,SecretStr
 from fastapi.middleware.cors import CORSMiddleware
 from api.list_api import listRouter
 from api.driver_api import driverRouter
-from db import get_mongo_db
+import sqlite3
 
 import secrets
 
 app = FastAPI()
-# Get the MongoDB database object
-db = get_mongo_db()
+# Assuming you have a SQLite database file named 'onionlk.db'
+db_path = 'onionlk.db'
 
 origins = [
     "http://localhost:4000",  # Replace with your frontend port
@@ -36,11 +36,6 @@ app.include_router(driverRouter)
 # Secret key to sign the JWT tokens (change this in a real application)
 SECRET_KEY = secrets.token_hex(32)
 ALGORITHM = "HS256"
-
-# Define your user model (replace this with your own user model)
-class User(BaseModel):
-    mobileNumber: str
-    password: SecretStr
 
 # OAuth2PasswordBearer is a class for handling OAuth2-style bearer tokens
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -73,33 +68,65 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 def read_root():
     return {"message": "Welcome to Union.lk"}
   
-  
-# Route to get information about the current user
-@app.get("/users/me", response_model=User)
-async def read_users_me(current_user: User = Depends(get_current_user)):
-    return current_user
+# Dependency to get the current user based on the JWT token
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    # Connect to SQLite database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Query the user based on the username (mobileNumber)
+    cursor.execute("SELECT * FROM users WHERE mobileNumber=?", (username,))
+    user = cursor.fetchone()
+
+    # Close the cursor and connection
+    cursor.close()
+    conn.close()
+
+    if user is None:
+        raise credentials_exception
+
+    return user
 
 # Route to get a token for authentication
 @app.post("/user/auth")
 async def create_token(form_data: dict):
     mobileNumber = form_data["mobileNumber"]
     password = form_data["password"]
-    
-    # Assuming you have a collection named "users" in your database
-    users_collection = db.users
 
-    # Find the user by mobileNumber
-    query = {"mobileNumber": mobileNumber}
-    user = users_collection.find_one(query)
+    # Connect to SQLite database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Query the user by mobileNumber
+    cursor.execute("SELECT * FROM users WHERE mobileNumber=?", (mobileNumber.lstrip("0"),))
+    user = cursor.fetchone()
+
+    # Close the cursor and connection
+    cursor.close()
+    conn.close()
 
     # Check if user exists and credentials are correct
-    if user and password == user["password"]:
+    if user and password == user[2]:  # Assuming password is at index 2
         token_data = {"sub": mobileNumber}
-        return {'success': 'true',
-                'message' : "User authenticated!",
-                "access_token": create_jwt_token(token_data),
-                "token_type": "bearer",
-                }
+        return {
+            'success': 'true',
+            'message': "User authenticated!",
+            "access_token": create_jwt_token(token_data),
+            "token_type": "bearer",
+        }
     else:
         raise HTTPException(
             status_code=401,

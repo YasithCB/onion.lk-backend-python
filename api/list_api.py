@@ -1,25 +1,23 @@
+import sqlite3
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 from decimal import Decimal
-from gridfs import GridFS
 from typing import Optional
 import boto3
 from botocore.exceptions import NoCredentialsError
 from dotenv import load_dotenv
 import os
-
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 from PIL import Image
 import requests
 import warnings
 
-from db import get_mongo_db
-
 # Load environment variables from .env file
 load_dotenv()
 
 listRouter = APIRouter()
-db = get_mongo_db()
-fs = GridFS(db)
+# Assuming you have a SQLite database file named "onionlk.db"
+conn = sqlite3.connect('onionlk.db')
+cursor = conn.cursor()
 
 def upload_to_aws(file, bucket, s3_file, acl="public-read"):
     print(f"Uploading {s3_file} to {bucket}")
@@ -77,15 +75,15 @@ async def create_order(
             # Handle the case when the upload fails
             raise HTTPException(status_code=500, detail="Failed to upload image to S3")
 
-        list_image_url = f"https://{bucket_name}{region_name}/{s3_file_path}"
-        generated_text = await image_to_text(list_image_url)
-        print(generated_text)
+        image_url = f"https://{bucket_name}{region_name}/{s3_file_path}"
+        # generated_text = await image_to_text(image_url)
+        # print(generated_text)
     else:
-        list_image_url = None
+        image_url = None
 
-    # Insert data into the "order" collection
+    # Insert data into the "orders" table
     order_data = {
-        "listImageUrl": list_image_url,
+        "imageUrl": image_url,
         "description": description,
         "userMobileNumber": userMobileNumber,
         "storeName": storeName,
@@ -96,37 +94,53 @@ async def create_order(
         "orderStatus": 'Pending',
     }
 
-    # Assuming you have a collection named "order" in your database
-    order_collection = db.order
-    result = order_collection.insert_one(order_data)
+    cursor.execute('''
+        INSERT INTO orders (
+            imageUrl,
+            description,
+            userMobileNumber,
+            storeName,
+            maxBudget,
+            locationLat,
+            locationLng,
+            assignedDriverMobileNumber,
+            orderStatus
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        order_data["imageUrl"],
+        order_data["description"],
+        order_data["userMobileNumber"],
+        order_data["storeName"],
+        order_data["maxBudget"],
+        order_data["locationLat"],
+        order_data["locationLng"],
+        order_data["assignedDriverMobileNumber"],
+        order_data["orderStatus"],
+    ))
 
-    # Get the inserted record's ObjectId
-    inserted_id = result.inserted_id
+    # Commit the changes
+    conn.commit()
 
-    # Return the inserted record's ObjectId
+    # Get the inserted record's rowid
+    inserted_id = cursor.lastrowid
+
+    # Return the inserted record's rowid
     return {
         "success": "true",
         "message": "The list upload was successful!",
-        "text_from_model": generated_text,
         "inserted_id": str(inserted_id),
     }
 
-    
- 
 @listRouter.get("/user/my_orders")
 async def get_orders_by_user(
     mobileNumber: str,
 ):
-    # Find orders by userMobileNumber
-    orders_collection = db.order
-    
-    # Use find to get a cursor and then iterate over it
-    orders_cursor = orders_collection.find({"userMobileNumber": mobileNumber})
-    
-    # Convert cursor to list to get all matching orders
-    orders_list = list(orders_cursor)
-    
+    # Execute SQL query to fetch orders by userMobileNumber
+    cursor.execute("SELECT * FROM orders WHERE userMobileNumber=?", (mobileNumber,))
+    orders = cursor.fetchall()
+
     # Convert ObjectId to string for each order in the list
+    orders_list = [dict(zip([column[0] for column in cursor.description], order)) for order in orders]
     for order in orders_list:
         order["_id"] = str(order["_id"])
 
