@@ -6,10 +6,10 @@ import boto3
 from botocore.exceptions import NoCredentialsError
 from dotenv import load_dotenv
 import os
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-from PIL import Image
-import requests
-import warnings
+# from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+# from PIL import Image
+# import requests
+# import warnings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -38,21 +38,21 @@ def upload_to_aws(file, bucket, s3_file, acl="public-read"):
         print("Credentials not available")
         return False
 
-async def image_to_text(imageUrl):
-    print('running model')
-    # Suppress the specific warning
-    warnings.filterwarnings("ignore", message="Some weights of VisionEncoderDecoderModel were not initialized")
+# async def image_to_text(imageUrl):
+#     print('running model')
+#     # Suppress the specific warning
+#     warnings.filterwarnings("ignore", message="Some weights of VisionEncoderDecoderModel were not initialized")
 
-    image = Image.open(requests.get(imageUrl, stream=True).raw).convert("RGB")
+#     image = Image.open(requests.get(imageUrl, stream=True).raw).convert("RGB")
 
-    processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
-    model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
-    pixel_values = processor(images=image, return_tensors="pt").pixel_values
+#     processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
+#     model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
+#     pixel_values = processor(images=image, return_tensors="pt").pixel_values
 
-    generated_ids = model.generate(pixel_values)
-    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+#     generated_ids = model.generate(pixel_values)
+#     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-    return generated_text
+#     return generated_text
 
 @listRouter.post("/listUpload")
 async def create_order(
