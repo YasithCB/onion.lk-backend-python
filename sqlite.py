@@ -25,6 +25,7 @@ cursor = conn.cursor()
 # ''')
 # cursor.execute("INSERT INTO drivers (mobileNumber, password, locationLat, locationLng) VALUES (0767722096, 123456, 6.715017, 80.381284)")
 
+# cursor.execute('DROP TABLE IF EXISTS orders')
 # cursor.execute('''
 #     CREATE TABLE orders (
 #         orderId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +37,9 @@ cursor = conn.cursor()
 #         locationLat TEXT,
 #         locationLng TEXT,
 #         assignedDriverMobileNumber TEXT,
-#         orderStatus TEXT
+#         orderStatus TEXT,
+#         review TEXT,
+#         reviewScore REAL
 #     )
 # ''')
 

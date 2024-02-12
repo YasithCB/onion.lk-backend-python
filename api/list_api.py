@@ -1,15 +1,12 @@
 import sqlite3
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
 from decimal import Decimal
 from typing import Optional
 import boto3
 from botocore.exceptions import NoCredentialsError
 from dotenv import load_dotenv
 import os
-# from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-# from PIL import Image
-# import requests
-# import warnings
+from ml_model import predict_score
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,22 +34,6 @@ def upload_to_aws(file, bucket, s3_file, acl="public-read"):
     except NoCredentialsError:
         print("Credentials not available")
         return False
-
-# async def image_to_text(imageUrl):
-#     print('running model')
-#     # Suppress the specific warning
-#     warnings.filterwarnings("ignore", message="Some weights of VisionEncoderDecoderModel were not initialized")
-
-#     image = Image.open(requests.get(imageUrl, stream=True).raw).convert("RGB")
-
-#     processor = TrOCRProcessor.from_pretrained('microsoft/trocr-base-handwritten')
-#     model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-base-handwritten')
-#     pixel_values = processor(images=image, return_tensors="pt").pixel_values
-
-#     generated_ids = model.generate(pixel_values)
-#     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
-#     return generated_text
 
 @listRouter.post("/listUpload")
 async def create_order(
@@ -142,11 +123,64 @@ async def get_orders_by_user(
     # Convert ObjectId to string for each order in the list
     orders_list = [dict(zip([column[0] for column in cursor.description], order)) for order in orders]
     for order in orders_list:
-        order["_id"] = str(order["_id"])
+        order["orderId"] = str(order["orderId"])
 
     return {
         "success": True,
         "message": f'Orders of {mobileNumber} are successfully fetched!',
         "body": orders_list,
+    }
+
+
+@listRouter.get("/driver/my_orders")
+async def get_orders_by_user(
+    mobileNumber: str,
+):
+    # remove first char if it is 0
+    if len(mobileNumber) == 10:
+        mobileNumber = mobileNumber[1:]
+        
+    # Execute SQL query to fetch orders by userMobileNumber
+    cursor.execute("SELECT * FROM orders WHERE assignedDriverMobileNumber=?", (mobileNumber,))
+    orders = cursor.fetchall()
+
+    # Convert ObjectId to string for each order in the list
+    orders_list = [dict(zip([column[0] for column in cursor.description], order)) for order in orders]
+    for order in orders_list:
+        order["orderId"] = str(order["orderId"])
+
+    return {
+        "success": True,
+        "message": f'Orders of driver {mobileNumber} are successfully fetched!',
+        "body": orders_list,
+    }
+    
+
+@listRouter.post("/order/rate_driver")
+async def rate_driver(orderId: int, review: str, background_tasks: BackgroundTasks):
+    # This function will be executed in the background
+    def process_review(order_id, review_text):
+        review_score = predict_score(review_text)
+        
+        # Connect to SQLite database
+        conn = sqlite3.connect('onionlk.db')
+        cursor = conn.cursor()
+
+        # SQL UPDATE query
+        cursor.execute("UPDATE orders SET reviewScore = ?, review = ? WHERE orderId = ?", (review_score,review_text, order_id))
+        conn.commit()
+
+        # Close the cursor and connection
+        cursor.close()
+        conn.close()
+
+        print(f"Review processed for order {order_id}")
+
+    # Add the background task
+    background_tasks.add_task(process_review, orderId, review)
+
+    return {
+        "success": True,
+        "message": f"Review will be processed asynchronously for order {orderId}"
     }
 

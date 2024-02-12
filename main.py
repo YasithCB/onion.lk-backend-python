@@ -2,7 +2,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel,SecretStr
 from fastapi.middleware.cors import CORSMiddleware
 from api.list_api import listRouter
 from api.driver_api import driverRouter
