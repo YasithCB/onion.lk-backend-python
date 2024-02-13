@@ -73,14 +73,22 @@ async def update_driver_location(
     
 # Function to calculate distance between two coordinates using Haversine formula
 def calculate_distance(lat1, lon1, lat2, lon2):
-    R = 6371  # Radius of the Earth in kilometers
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat / 2) * sin(dlat / 2) + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) * sin(dlon / 2)
+    # Convert latitude and longitude from degrees to radians
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    
+    print(f'lat1 : {lat1} lng1 : {lon1}')
+    print(f'lat2 : {lat2} lng2 : {lon2}')
+
+    # Haversine formula
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    distance = R * c  # Distance in kilometers
-        
+    distance = 6371 * c  # Radius of the Earth in kilometers
+    print(f'distance : {distance}')
+
     return distance
+
     
 # Endpoint to get nearby orders for a driver
 @driverRouter.get("/driver/nearby_orders")
@@ -116,17 +124,22 @@ async def get_nearby_orders(
     nearby_orders = []
 
     for order in cursor.fetchall():
-        order_location = {"lat": float(order[5]), "lng": float(order[6])}
+        order_location = {"lat": float(order[6]), "lng": float(order[7])}
+        print(f'order_location : {order_location}')
+        print(f'driver_location : {driver_location}')
         distance = calculate_distance(
             driver_location["lat"], driver_location["lng"], order_location["lat"], order_location["lng"]
         )
         if distance <= radius:
             # Convert the order data to a dictionary
             order_dict = {
-                "_id": str(order[0]),  # Assuming the first column is the ID
-                "imageUrl": order[1],  # Replace with the correct column index
-                "description": order[2],  # Replace with the correct column index
-                # Add other fields accordingly
+                "id": str(order[0]), 
+                "imageUrl": order[1],  
+                "description": order[2], 
+                "userMobileNumber": order[3], 
+                "storeName": order[4], 
+                "maxBudget": float(order[5]), 
+                "orderStatus": order[6], 
             }
             nearby_orders.append(order_dict)
 
