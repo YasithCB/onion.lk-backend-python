@@ -91,7 +91,7 @@ async def get_nearby_orders(
     # remove first char if it is 0
     if len(mobileNumber) == 10:
         mobileNumber = mobileNumber[1:]
-    
+
     # Connect to SQLite database
     conn = sqlite3.connect('onionlk.db')
     cursor = conn.cursor()
@@ -108,7 +108,7 @@ async def get_nearby_orders(
         )
 
     # Get the driver's current location
-    driver_location = {"lat": driver[3], "lng": driver[4]}  # Assuming indexes based on your table structure
+    driver_location = {"lat": float(driver[3]), "lng": float(driver[4])}
 
     # Find nearby orders within the specified radius
     query = "SELECT * FROM orders"
@@ -116,7 +116,7 @@ async def get_nearby_orders(
     nearby_orders = []
 
     for order in cursor.fetchall():
-        order_location = {"lat": order[5], "lng": order[6]}  # Assuming indexes based on your table structure
+        order_location = {"lat": float(order[5]), "lng": float(order[6])}
         distance = calculate_distance(
             driver_location["lat"], driver_location["lng"], order_location["lat"], order_location["lng"]
         )
