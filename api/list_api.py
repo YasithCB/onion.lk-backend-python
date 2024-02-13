@@ -73,6 +73,8 @@ async def create_order(
         "locationLng": float(locationLng),
         "assignedDriverMobileNumber": 'N/A',
         "orderStatus": 'Pending',
+        "review": 'N/A', 
+        "reviewScore": 0, 
     }
 
     cursor.execute('''

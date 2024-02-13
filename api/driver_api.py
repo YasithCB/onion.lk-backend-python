@@ -144,7 +144,7 @@ async def get_nearby_orders(
                 "assignedDriverMobileNumber": (order[8]), 
                 "orderStatus": order[9], 
                 "review": order[10], 
-                "reviewScore": float(order[11]), 
+                "reviewScore": order[11], 
             }
             nearby_orders.append(order_dict)
 
