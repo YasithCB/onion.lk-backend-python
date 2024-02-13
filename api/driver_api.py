@@ -141,10 +141,10 @@ async def get_nearby_orders(
                 "maxBudget": float(order[5]), 
                 "locationLat": float(order[6]), 
                 "locationLng": float(order[7]), 
-                "assignedDriverMobileNumber": float(order[8]), 
+                "assignedDriverMobileNumber": (order[8]), 
                 "orderStatus": order[9], 
                 "review": order[10], 
-                "reviewScore": order[11], 
+                "reviewScore": float(order[11]), 
             }
             nearby_orders.append(order_dict)
 
