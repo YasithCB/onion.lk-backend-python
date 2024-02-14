@@ -115,17 +115,21 @@ async def create_order(
     }
 
 @listRouter.get("/user/my_orders")
-async def get_orders_by_user(
-    mobileNumber: str,
-):
+async def get_orders_by_user(mobileNumber: str):
     # Execute SQL query to fetch orders by userMobileNumber
     cursor.execute("SELECT * FROM orders WHERE userMobileNumber=?", (mobileNumber,))
     orders = cursor.fetchall()
 
-    # Convert ObjectId to string for each order in the list
-    orders_list = [dict(zip([column[0] for column in cursor.description], order)) for order in orders]
-    for order in orders_list:
-        order["orderId"] = str(order["orderId"])
+    # Convert the orders to a list of dictionaries
+    orders_list = []
+    for order in orders:
+        order_dict = dict(zip([column[0] for column in cursor.description], order))
+        # Convert locationLat and locationLng to floats
+        order_dict["locationLat"] = float(order_dict["locationLat"])
+        order_dict["locationLng"] = float(order_dict["locationLng"])
+        # Convert orderId to string
+        order_dict["orderId"] = str(order_dict["orderId"])
+        orders_list.append(order_dict)
 
     return {
         "success": True,
@@ -134,14 +138,13 @@ async def get_orders_by_user(
     }
 
 
+
 @listRouter.get("/driver/my_orders")
-async def get_orders_by_user(
-    mobileNumber: str,
-):
+async def get_orders_by_user(mobileNumber: str):
     # remove first char if it is 0
     if len(mobileNumber) == 10:
         mobileNumber = mobileNumber[1:]
-        
+
     # Execute SQL query to fetch orders by userMobileNumber
     cursor.execute("SELECT * FROM orders WHERE assignedDriverMobileNumber=?", (mobileNumber,))
     orders = cursor.fetchall()
@@ -150,12 +153,16 @@ async def get_orders_by_user(
     orders_list = [dict(zip([column[0] for column in cursor.description], order)) for order in orders]
     for order in orders_list:
         order["orderId"] = str(order["orderId"])
+        # Convert locationLat and locationLng to floats
+        order["locationLat"] = float(order["locationLat"])
+        order["locationLng"] = float(order["locationLng"])
 
     return {
         "success": True,
         "message": f'Orders of driver {mobileNumber} are successfully fetched!',
         "body": orders_list,
     }
+
     
 
 @listRouter.post("/order/rate_driver")

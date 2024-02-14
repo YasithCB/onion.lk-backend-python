@@ -89,7 +89,6 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 
     return distance
 
-    
 # Endpoint to get nearby orders for a driver
 @driverRouter.get("/driver/nearby_orders")
 async def get_nearby_orders(
