@@ -166,30 +166,26 @@ async def get_orders_by_user(mobileNumber: str):
     
 
 @listRouter.post("/order/rate_driver")
-async def rate_driver(orderId: int, review: str, background_tasks: BackgroundTasks):
-    # This function will be executed in the background
-    def process_review(order_id, review_text):
-        review_score = predict_score(review_text)
-        
-        # Connect to SQLite database
-        conn = sqlite3.connect('onionlk.db')
-        cursor = conn.cursor()
+async def rate_driver(orderId: int, review: str):
+    # Process review
+    review_score = predict_score(review)
 
-        # SQL UPDATE query
-        cursor.execute("UPDATE orders SET reviewScore = ?, review = ? WHERE orderId = ?", (review_score,review_text, order_id))
-        conn.commit()
+    # Connect to SQLite database
+    conn = sqlite3.connect('onionlk.db')
+    cursor = conn.cursor()
 
-        # Close the cursor and connection
-        cursor.close()
-        conn.close()
+    # SQL UPDATE query
+    cursor.execute("UPDATE orders SET reviewScore = ?, review = ? WHERE orderId = ?", (review_score, review, orderId))
+    conn.commit()
 
-        print(f"Review processed for order {order_id}")
+    # Close the cursor and connection
+    cursor.close()
+    conn.close()
 
-    # Add the background task
-    background_tasks.add_task(process_review, orderId, review)
+    print(f"Review processed for order {orderId}")
 
     return {
         "success": True,
-        "message": f"Review will be processed asynchronously for order {orderId}"
+        "message": f"Review processed for order {orderId}"
     }
 
